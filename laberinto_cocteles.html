@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Laberinto de Cócteles</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f8f0e3;
+      text-align: center;
+    }
+    #game-board {
+      display: grid;
+      grid-template-columns: repeat(6, 60px);
+      grid-template-rows: repeat(6, 60px);
+      gap: 5px;
+      justify-content: center;
+      margin: 20px auto;
+    }
+    .cell {
+      width: 60px;
+      height: 60px;
+      border: 1px solid #ccc;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: #fff;
+    }
+    .player {
+      background-color: #ffa;
+    }
+    .exit {
+      background-color: #cfc;
+    }
+    .ingredient {
+      background-color: #fdd;
+    }
+    .enemy {
+      background-color: #f88;
+    }
+    #game-over {
+      font-size: 32px;
+      color: red;
+      font-weight: bold;
+      display: none;
+    }
+    #reset-button {
+      margin-top: 20px;
+      padding: 10px 20px;
+      font-size: 18px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h1>Laberinto de Cócteles</h1>
+  <p>Recoge todos los ingredientes uno por uno y llega al final del laberinto para preparar tu cóctel.</p>
+  <div id="game-board"></div>
+  <p id="message"></p>
+  <div id="game-over">GAME OVER</div>
+  <button id="reset-button" onclick="resetGame()">Reiniciar juego</button>
+
+  <audio id="pickup-sound" src="https://www.soundjay.com/button/beep-07.wav" preload="auto"></audio>
+  <audio id="win-sound" src="https://www.soundjay.com/misc/sounds/bell-ringing-01.mp3" preload="auto"></audio>
+  <audio id="lose-sound" src="https://www.soundjay.com/button/button-10.mp3" preload="auto"></audio>
+
+  <script>
+    const boardSize = 6;
+    let player, exit, enemy, currentIngredientIndex, playerMoves;
+    let emojis, ingredientNames, ingredients, collected;
+    let board, message, pickupSound, winSound, loseSound, gameOver;
+
+    function initGame() {
+      player = { x: 0, y: 0 };
+      exit = { x: boardSize - 1, y: boardSize - 1 };
+      enemy = generateRandomPosition();
+      emojis = ['🍋', '🧊', '🌿', '🍸', '🍺'];
+      ingredientNames = ['Limón', 'Hielo', 'Menta', 'Vodka', 'Vaso'];
+      ingredients = [];
+      collected = new Set();
+      currentIngredientIndex = 0;
+      playerMoves = 0;
+
+      board = document.getElementById('game-board');
+      message = document.getElementById('message');
+      gameOver = document.getElementById('game-over');
+      pickupSound = document.getElementById('pickup-sound');
+      winSound = document.getElementById('win-sound');
+      loseSound = document.getElementById('lose-sound');
+
+      gameOver.style.display = 'none';
+      message.textContent = '';
+      document.addEventListener('keydown', handleKey);
+      spawnIngredient();
+      drawBoard();
+    }
+
+    function resetGame() {
+      document.removeEventListener('keydown', handleKey);
+      initGame();
+    }
+
+    function generateRandomPosition(avoidNearPlayer = false) {
+      let pos;
+      do {
+        pos = {
+          x: Math.floor(Math.random() * boardSize),
+          y: Math.floor(Math.random() * boardSize)
+        };
+      } while (
+        (pos.x === player.x && pos.y === player.y) ||
+        (pos.x === exit.x && pos.y === exit.y) ||
+        (avoidNearPlayer && Math.abs(pos.x - player.x) + Math.abs(pos.y - player.y) < 4)
+      );
+      return pos;
+    }
+
+    function spawnIngredient() {
+      while (true) {
+        let x = Math.floor(Math.random() * boardSize);
+        let y = Math.floor(Math.random() * boardSize);
+        if ((x !== player.x || y !== player.y) && (x !== exit.x || y !== exit.y) &&
+            (x !== enemy.x || y !== enemy.y)) {
+          ingredients[0] = {
+            x,
+            y,
+            name: ingredientNames[currentIngredientIndex],
+            emoji: emojis[currentIngredientIndex]
+          };
+          break;
+        }
+      }
+    }
+
+    function drawBoard() {
+      board.innerHTML = '';
+      for (let y = 0; y < boardSize; y++) {
+        for (let x = 0; x < boardSize; x++) {
+          const cell = document.createElement('div');
+          cell.className = 'cell';
+          if (x === player.x && y === player.y) {
+            cell.classList.add('player');
+            cell.textContent = '👨‍🍳';
+          } else if (x === enemy.x && y === enemy.y) {
+            cell.classList.add('enemy');
+            cell.textContent = '👾';
+          } else if (x === exit.x && y === exit.y) {
+            cell.classList.add('exit');
+            cell.textContent = '🍹';
+          } else {
+            const ing = ingredients[0];
+            if (ing && ing.x === x && ing.y === y && !collected.has(ing.name)) {
+              cell.classList.add('ingredient');
+              cell.textContent = ing.emoji;
+            }
+          }
+          board.appendChild(cell);
+        }
+      }
+    }
+
+    function movePlayer(dx, dy) {
+      const newX = player.x + dx;
+      const newY = player.y + dy;
+      if (newX >= 0 && newX < boardSize && newY >= 0 && newY < boardSize) {
+        player.x = newX;
+        player.y = newY;
+        playerMoves++;
+        checkIngredient();
+        if (playerMoves % 2 === 0) {
+          moveEnemy();
+        }
+        checkEnemy();
+        checkWin();
+        drawBoard();
+      }
+    }
+
+    function moveEnemy() {
+      const dx = Math.abs(player.x - enemy.x) >= Math.abs(player.y - enemy.y) ? (player.x > enemy.x ? 1 : (player.x < enemy.x ? -1 : 0)) : 0;
+      const dy = dx === 0 ? (player.y > enemy.y ? 1 : (player.y < enemy.y ? -1 : 0)) : 0;
+      const newX = enemy.x + dx;
+      const newY = enemy.y + dy;
+      if (newX >= 0 && newX < boardSize) enemy.x = newX;
+      if (newY >= 0 && newY < boardSize) enemy.y = newY;
+    }
+
+    function checkIngredient() {
+      const ing = ingredients[0];
+      if (ing && player.x === ing.x && player.y === ing.y && !collected.has(ing.name)) {
+        collected.add(ing.name);
+        pickupSound.play();
+        message.textContent = `¡Recogiste ${ing.name}!`;
+        currentIngredientIndex++;
+        enemy = generateRandomPosition(true);
+        if (currentIngredientIndex < ingredientNames.length) {
+          spawnIngredient();
+        } else {
+          ingredients.length = 0;
+        }
+      }
+    }
+
+    function checkEnemy() {
+      if (player.x === enemy.x && player.y === enemy.y) {
+        message.textContent = '¡Te atrapó el enemigo! 😱 Juego terminado.';
+        gameOver.style.display = 'block';
+        loseSound.play();
+        document.removeEventListener('keydown', handleKey);
+      }
+    }
+
+    function checkWin() {
+      if (player.x === exit.x && player.y === exit.y) {
+        if (collected.size === ingredientNames.length) {
+          message.textContent = '¡Felicidades! Preparaste el cóctel 🍹';
+          winSound.play();
+          document.removeEventListener('keydown', handleKey);
+        } else {
+          message.textContent = 'Te faltan ingredientes para preparar el cóctel.';
+        }
+      }
+    }
+
+    function handleKey(e) {
+      switch(e.key) {
+        case 'ArrowUp': movePlayer(0, -1); break;
+        case 'ArrowDown': movePlayer(0, 1); break;
+        case 'ArrowLeft': movePlayer(-1, 0); break;
+        case 'ArrowRight': movePlayer(1, 0); break;
+      }
+    }
+
+    window.onload = initGame;
+  </script>
+</body>
+</html>
